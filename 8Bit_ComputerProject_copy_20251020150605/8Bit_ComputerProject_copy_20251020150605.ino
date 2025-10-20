@@ -1,6 +1,17 @@
+
+/**
+    * @class MachineState
+*/
 class MachineState
 {
+    public:
+
     
+        MachineState();
+
+
+    private:
+
 };
 
 void setup() 
@@ -12,3 +23,4 @@ void loop()
 {
     Serial.println("hello");
 }
+
