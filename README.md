@@ -68,10 +68,4 @@ If you have improvements, wiring diagrams, corrected code, or new experiments, p
 No license file included. Add a LICENSE if you want to set reuse permissions (MIT, Apache-2.0, etc.).
 
 ## Contact / Next steps
-If you want, I can:
-- Clean up and commit this README to the repository,
-- Add a short wiring diagram image and example photos,
-- Convert Main.ino into a top-level sketches folder with a usage example.
-
-If you'd like me to commit these changes, tell me whether to create a new branch or update the README on the default branch.
-```
+.
