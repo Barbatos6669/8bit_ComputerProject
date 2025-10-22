@@ -239,7 +239,7 @@ void MachineState::update()
 {
     switch(currentState)
     {
-        case State::Reset: heartbeat.setInterval(500); break;
+        case State::Reset: heartbeat.setInterval(0); break;
         case State::Pause: heartbeat.setInterval(0); break;
         case State::Run: heartbeat.setInterval(500); break;
         case State::Step: heartbeat.setInterval(0); break;
@@ -304,6 +304,10 @@ void HeartBeat::tick()
         
         isOn = !isOn;
         digitalWrite(ledPin, isOn ? HIGH : LOW);
+    }
+    else if (interval == 0)
+    {
+        digitalWrite(ledPin, LOW);
     }
 
 }
