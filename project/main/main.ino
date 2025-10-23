@@ -1,3 +1,54 @@
+/**
+ * @file main.ino
+ * @brief Clock program
+ * @author HobbyHacker
+ * @version 0.1.0
+ * @date 2025-10-20
+ *
+ * @details
+ * This is an experimental project to help me and maybe others learn and better understand
+ * how a computer works by utilizing an ATmega and other integrated circuits
+ * to construct the basic computational components of a simple CPU system.
+ */
+
+/* ------------------------------------------------------------ */
+/*                        CLASS SECTION                         */
+/* ------------------------------------------------------------ */
+
+
+/**
+ * @class HeartBeat
+ * @brief Provides a non-blocking blinking or pulse signal for system feedback.
+ *
+ * @details
+ * The HeartBeat class is used to create a timed pulse or LED blink that
+ * represents a system heartbeat. It uses `millis()` for timing, so it does not
+ * block the main loop — allowing other code to run simultaneously.
+ * 
+ * ### Behavior
+ * - Toggles a digital pin at a regular interval (default 500 ms).
+ * - Setting the interval to 0 disables the heartbeat (output forced LOW).
+ * - Useful for showing system status, timing, or “alive” signals.
+ * 
+ * ### Usage Example
+ * ```cpp
+ * HeartBeat heartbeat(13, 500);  // LED on pin 13, 500ms blink interval
+ *
+ * void setup() {
+ *     heartbeat.begin();
+ * }
+ *
+ * void loop() {
+ *     heartbeat.update();
+ *     heartbeat.tick();
+ * }
+ * ```
+ *
+ * ### Notes
+ * - @ref update() should be called continuously inside `loop()`.
+ * - @ref tick() performs the actual output toggle.
+ * - @ref stepBeat() can be used to manually trigger a pulse.
+ */
 class HeartBeat
 {
     public:
@@ -54,21 +105,109 @@ class HeartBeat
 };
 
 /**
- * @file main.ino
- * @brief Clock program
- * @author HobbyHacker
- * @version 0.1.0
- * @date 2025-10-20
+ * @class RGBLed
+ * @brief Controls an RGB LED to display various color states or visual feedback.
  *
  * @details
- * This is an experimental project to help me and maybe others learn and better understand
- * how a computer works by utilizing an ATmega and other integrated circuits
- * to construct the basic computational components of a simple CPU system.
+ * The RGBLed class provides an interface for driving a tri-color (Red, Green, Blue)
+ * LED module using three digital pins. Each color channel can be toggled independently
+ * or used in combination to produce composite colors.
+ *
+ * This class is designed for use in embedded systems where an RGB LED represents
+ * system states (e.g., Reset, Run, Pause) or provides general visual feedback.
+ *
+ * ### Example Usage
+ * 
+ * RGBLed statusLed(9, 10, 11);
+ * 
+ * void setup() {
+ *     statusLed.begin();
+ *     statusLed.setColor(RGBLed::rgbColor::Green);
+ * }
+ * 
+ * void loop() {
+ *     statusLed.update();
+ * }
+ *
  */
+class RGBLed
+{
+public:
+    /**
+     * @enum rgbColor
+     * @brief Enumerates predefined color states for the RGB LED.
+     *
+     * @details
+     * Each enum value represents a basic color that can be produced
+     * by combining the red, green, and blue channels.
+     */
+    enum class RgbColor {Red, Orange, Yellow, Green, Blue, Violet};
 
-/* ------------------------------------------------------------ */
-/*                        CLASS SECTION                         */
-/* ------------------------------------------------------------ */
+    /**
+     * @brief Constructs a new RGBLed object.
+     * 
+     * @param pin The digital pin connected to the RGB LED module or control channel.
+     * 
+     * @details
+     * Initializes the RGB LED instance but does not configure the pin hardware.
+     * Call @ref begin() before using other functions.
+     */
+    RGBLed(int pin);
+
+    /**
+     * @brief Initializes the LED hardware.
+     * 
+     * @details
+     * Sets the assigned RGB LED pin(s) as OUTPUT and ensures all channels
+     * are turned off at startup. Should be called once in setup().
+     */
+    void begin();
+
+    /**
+     * @brief Handles input or interaction logic.
+     * 
+     * @details
+     * Intended for reading input (such as buttons or machine states) that
+     * influence the LED’s behavior. This method can be expanded to interpret
+     * system signals and automatically change the LED color.
+     */
+    void handleInput();
+
+    /**
+     * @brief Updates LED state or timing logic.
+     * 
+     * @details
+     * Called continuously within the main loop to refresh LED output,
+     * animate color transitions, or apply timed effects.
+     * 
+     * In its base form, it can be left empty until timing-based features
+     * (like fades or blinking) are implemented.
+     */
+    void update();
+
+    /**
+     * @brief Retrieves the current LED color.
+     * 
+     * @details
+     * Returns the currently active color, which can be used for
+     * debugging, display updates, or synchronized subsystem behavior.
+     */
+    void getColor();
+
+    /**
+     * @brief Changes the LED color output.
+     * 
+     * @details
+     * Applies a new color by adjusting the LED output channels. The implementation
+     * can either use predefined enum colors (from @ref rgbColor) or direct RGB values
+     * depending on future expansion.
+     */
+    void setColor();
+
+private:
+    int rgbLedPin; ///< Assigned GPIO pin for controlling the RGB LED or color channel.
+};
+
 
 /**
  * @class MachineState
@@ -232,7 +371,7 @@ void MachineState::begin()
 void MachineState::handleInput()
 {
     // Handle all input
-    //Serial.println("Handling Input"); // Muted
+    // Serial.println("Handling Input"); // Muted
 }
 
 void MachineState::update()
