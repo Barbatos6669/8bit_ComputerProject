@@ -2,7 +2,7 @@
  * @file main.ino
  * @brief Clock program
  * @author HobbyHacker
- * @version 0.1.0
+ * @version 0.1.1
  * @date 2025-10-20
  *
  * @details
@@ -15,6 +15,9 @@
 /*                        CLASS SECTION                         */
 /* ------------------------------------------------------------ */
 
+/* ------------------------------------------------------------ */
+/*                       HEARTBEAT CLASS                        */
+/* ------------------------------------------------------------ */
 
 /**
  * @class HeartBeat
@@ -83,7 +86,7 @@ class HeartBeat
          * actual output effect (such as toggling an LED or producing a short
          * tone). Intended to be triggered from @ref update().
          */
-        void tick();
+        void refreshOutput();
 
         /**
          * @brief Forces an immediate heartbeat pulse.
@@ -103,6 +106,10 @@ class HeartBeat
         unsigned long interval;
         bool isOn;
 };
+
+/* ------------------------------------------------------------ */
+/*                        RGBLed Class                          */
+/* ------------------------------------------------------------ */
 
 /**
  * @class RGBLed
@@ -144,23 +151,30 @@ public:
     enum class RgbColor {Red, Orange, Yellow, Green, Blue, Violet};
 
     /**
-     * @brief Constructs a new RGBLed object.
-     * 
-     * @param pin The digital pin connected to the RGB LED module or control channel.
-     * 
-     * @details
-     * Initializes the RGB LED instance but does not configure the pin hardware.
-     * Call @ref begin() before using other functions.
-     */
-    RGBLed(int pin);
+    * @brief Creates a new RGB LED controller.
+    * 
+    * @param rPin The digital pin connected to the red channel of the LED.
+    * @param gPin The digital pin connected to the green channel of the LED.
+    * @param bPin The digital pin connected to the blue channel of the LED.
+    * 
+    * @details
+    * This constructor sets up an RGB LED object and stores the pin numbers for each color channel.
+    * It does not configure the pins or send any signals yet — call @ref begin() in setup() 
+    * to initialize the hardware before changing colors.
+    */
+    RGBLed(int rPin, int gPin, int bPin);
 
     /**
-     * @brief Initializes the LED hardware.
-     * 
-     * @details
-     * Sets the assigned RGB LED pin(s) as OUTPUT and ensures all channels
-     * are turned off at startup. Should be called once in setup().
-     */
+    * @brief Prepares the RGB LED for use.
+    *
+    * @details
+    * This function tells the microcontroller which pins control the LED’s red,
+    * green, and blue channels. It also turns all channels off to start from
+    * a known state. Think of it as “plugging in the LED and turning it off”
+    * before any colors are shown.
+    *
+    * Should be called once in setup().
+    */
     void begin();
 
     /**
@@ -202,12 +216,19 @@ public:
      * can either use predefined enum colors (from @ref rgbColor) or direct RGB values
      * depending on future expansion.
      */
-    void setColor();
+    void setColor(RgbColor color);
 
 private:
-    int rgbLedPin; ///< Assigned GPIO pin for controlling the RGB LED or color channel.
+    RgbColor currentRGBLedColor;
+
+    int redLedPin; ///< Assigned GPIO pin for controlling the RGB LED or color channel.
+    int greenLedPin; ///< Assigned GPIO pin for controlling the RGB LED or color channel.
+    int blueLedPin; ///< Assigned GPIO pin for controlling the RGB LED or color channel.
 };
 
+/* ------------------------------------------------------------ */
+/*                        MACHINESTATE CLASS                    */
+/* ------------------------------------------------------------ */
 
 /**
  * @class MachineState
@@ -276,16 +297,13 @@ class MachineState
         void update();
 
         /**
-        * @brief Executes time-based or output update operations.
+        * @brief Sends all changes out to the hardware.
+        *
         * @details
-        * Called at the end of each loop cycle to perform periodic actions
-        * that depend on timing or visual feedback. Typical uses include
-        * blinking LEDs, generating heartbeat signals, or playing timed tones.
-        * 
-        * @note This method should run after update() to ensure all logic
-        * has been processed before outputs are refreshed.
-        */
-        void tick();
+        * This runs after all updates have been calculated.
+        * It makes LEDs blink, buzzers beep, and anything else
+        * that should respond to the current state actually happen.        */
+        void refreshOutput();
 
         /**
         * @brief Retrieves the current operating state of the machine.
@@ -317,10 +335,11 @@ class MachineState
     private:
         State currentState;
         HeartBeat heartbeat; 
+        RGBLed rgbLed;
 };
 
 /* ------------------------------------------------------------ */
-/*                  Global Object Constructed                   */
+/*                  GLOBAL OBJECT CONSTRUCTED                   */
 /* ------------------------------------------------------------ */
 
 MachineState machineState;
@@ -338,21 +357,23 @@ void loop()
 {
     machineState.handleInput();
     machineState.update();
-    machineState.tick();
+    machineState.refreshOutput();
 }
 
 /* ------------------------------------------------------------ */
 /*                    CLASS IMPLEMENTATION                      */
 /* ------------------------------------------------------------ */
 
-/// MachineState
+/* ------------------------------------------------------------ */
+/*                 MachineState Implementation                  */
+/* ------------------------------------------------------------ */
 MachineState::MachineState() 
     :   currentState(State::Reset), 
-        heartbeat(13, 500)
+        heartbeat(13, 500), 
+        rgbLed(3, 5, 7)
 {
     // Start in Reset mode (will transition to Run in begin)
 }
-
 
 void MachineState::begin()
 {
@@ -387,11 +408,11 @@ void MachineState::update()
     heartbeat.update();
 }
 
-void MachineState::tick()
+void MachineState::refreshOutput()
 {
     // handle output and end cycle
     // Serial.println("Tick"); Muted
-    heartbeat.tick();
+    heartbeat.refreshOutput();
 }
 
 MachineState::State MachineState::getState() const
@@ -416,7 +437,10 @@ void MachineState::setState(State newState)
     }
 }
 
-/// HeartBeat
+/* ------------------------------------------------------------ */
+/*                   HeartBeat Implementation                   */
+/* ------------------------------------------------------------ */
+
 HeartBeat::HeartBeat(int pin, unsigned long ms)
     : ledPin(pin), previousMillis(0), interval(ms), isOn(false) {}
 
@@ -431,7 +455,7 @@ void HeartBeat::update()
 
 }
 
-void HeartBeat::tick()
+void HeartBeat::refreshOutput()
 {
     unsigned long currentMillis = millis();
 
@@ -460,6 +484,17 @@ void HeartBeat::setInterval(unsigned long ms)
 {
     interval = ms;
 }
+
+/* ------------------------------------------------------------ */
+/*                   RGBLed Implementation                      */
+/* ------------------------------------------------------------ */
+
+RGBLed::RGBLed(int rPin, int gPin, int bPin)
+    : redLedPin(rPin), greenLedPin(gPin), blueLedPin(bPin)
+{
+
+}
+
 
 
 
