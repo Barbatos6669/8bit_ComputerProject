@@ -2,7 +2,7 @@
  * @file main.ino
  * @brief Clock program
  * @author HobbyHacker
- * @version 0.1.1
+ * @version 0.1.2
  * @date 2025-10-20
  *
  * @details
@@ -34,7 +34,6 @@
  * - Useful for showing system status, timing, or “alive” signals.
  * 
  * ### Usage Example
- * ```cpp
  * HeartBeat heartbeat(13, 500);  // LED on pin 13, 500ms blink interval
  *
  * void setup() {
@@ -148,7 +147,7 @@ public:
      * Each enum value represents a basic color that can be produced
      * by combining the red, green, and blue channels.
      */
-    enum class RgbColor {Red, Orange, Yellow, Green, Blue, Violet};
+    enum class RgbColor {Red, Orange, Yellow, Green, Blue, Violet, Off};
 
     /**
     * @brief Creates a new RGB LED controller.
@@ -225,6 +224,112 @@ private:
     int greenLedPin; ///< Assigned GPIO pin for controlling the RGB LED or color channel.
     int blueLedPin; ///< Assigned GPIO pin for controlling the RGB LED or color channel.
 };
+
+/* ------------------------------------------------------------ */
+/*                        BUZZER CLASS                          */
+/* ------------------------------------------------------------ */
+
+/**
+ * @class Buzzer
+ * @brief Provides non-blocking tone or beep functionality.
+ *
+ * @details
+ * The Buzzer class allows timed beeps using millis() instead of delay(),
+ * ensuring that system timing and other logic continue to run smoothly.
+ *
+ * ### Behavior
+ * - Call @ref beep(duration) to start a timed beep.
+ * - @ref update() automatically turns it off after the duration expires.
+ * - Can be tied into @ref refreshOutput() for synchronized system updates.
+ *
+ * ### Example
+ * ```cpp
+ * Buzzer buzzer(7, 100);
+ * 
+ * void setup() {
+ *     buzzer.begin();
+ * }
+ * 
+ * void loop() {
+ *     buzzer.update();
+ *     buzzer.refreshOutput();
+ * }
+ * ```
+ */
+class Buzzer
+{
+    public:
+        /**
+        * @brief Creates a new buzzer controller.
+        * @param pin The digital pin connected to the buzzer.
+        * @param duration The default duration (ms) of each beep.
+        */
+        Buzzer(int pin, unsigned long duration);
+
+        /**
+        * @brief Initializes the buzzer pin and ensures it starts off.
+        */
+        void begin();
+
+        /**
+        * @brief Starts a beep for a given duration.
+        * @param duration The duration (ms) the buzzer stays on.
+        */
+        void beep(unsigned long duration);
+
+        /**
+        * @brief Updates the buzzer logic.
+        * @details
+        * Checks if the beep duration has elapsed and stops the buzzer automatically.
+        * Must be called frequently in the main loop.
+        */
+        void update();
+
+        /**
+        * @brief Outputs the buzzer state to hardware.
+        * @details
+        * Writes HIGH or LOW to the buzzer pin based on current state.
+        */
+        void refreshOutput();
+        
+        /**
+        * @brief Sets the default beep duration.
+        * @param duration Duration in milliseconds.
+        */
+        void setDuration();
+
+        /**
+        * @brief Returns whether the buzzer is currently active.
+        * @return true if beeping, false otherwise.
+        */
+        bool getState();
+
+    private:
+    int buzzerPin; ///< Output pin connected to the buzzer.
+    unsigned long beepDuration; ///< Duration of current beep.
+    unsigned long previousMillis; ///< Timestamp for non-blocking timing.
+    bool isBeeping; ///< Whether the buzzer is currently active.
+};
+
+/* ------------------------------------------------------------ */
+/*                        BUTTON CLASS                          */
+/* ------------------------------------------------------------ */
+
+class Button
+{
+    public:
+        Button();
+        void begin();
+        void update();
+        
+
+    private:
+        int resetButton;
+        int pauseButton;
+        int playButton;
+        int stepButton;
+};
+
 
 /* ------------------------------------------------------------ */
 /*                        MACHINESTATE CLASS                    */
@@ -336,6 +441,7 @@ class MachineState
         State currentState;
         HeartBeat heartbeat; 
         RGBLed rgbLed;
+        Buzzer buzzer;
 };
 
 /* ------------------------------------------------------------ */
@@ -370,7 +476,8 @@ void loop()
 MachineState::MachineState() 
     :   currentState(State::Reset), 
         heartbeat(13, 500), 
-        rgbLed(3, 5, 7)
+        rgbLed(3, 5, 6), 
+        buzzer(7, 100)
 {
     // Start in Reset mode (will transition to Run in begin)
 }
@@ -384,6 +491,8 @@ void MachineState::begin()
 
     // Hardware initialization.....
     heartbeat.begin();
+    rgbLed.begin();
+    buzzer.begin();
 
     // State Transition
     setState(State::Run);
@@ -406,6 +515,7 @@ void MachineState::update()
     }
     
     heartbeat.update();
+    buzzer.update();
 }
 
 void MachineState::refreshOutput()
@@ -413,6 +523,24 @@ void MachineState::refreshOutput()
     // handle output and end cycle
     // Serial.println("Tick"); Muted
     heartbeat.refreshOutput();
+    buzzer.refreshOutput();
+
+    switch (currentState)
+    {
+        case State::Reset:
+            rgbLed.setColor(RGBLed::RgbColor::Red);
+            break;
+        case State::Pause:
+            rgbLed.setColor(RGBLed::RgbColor::Orange);
+            break;
+        case State::Run:
+            rgbLed.setColor(RGBLed::RgbColor::Green);
+            break;
+        case State::Step:
+            rgbLed.setColor(RGBLed::RgbColor::Blue);
+            buzzer.beep(100); 
+            break;
+    }
 }
 
 MachineState::State MachineState::getState() const
@@ -461,12 +589,13 @@ void HeartBeat::refreshOutput()
 
     if (currentMillis - previousMillis >= interval)
     {
-        Serial.print("Previous Time: "); Serial.println(previousMillis);        
+        // Serial.print("Previous Time: "); Serial.println(previousMillis); muted       
         previousMillis = currentMillis;
-        Serial.print("Elapsed Time: "); Serial.println(currentMillis);
+        // Serial.print("Elapsed Time: "); Serial.println(currentMillis); muted
         
         isOn = !isOn;
         digitalWrite(ledPin, isOn ? HIGH : LOW);
+        
     }
     else if (interval == 0)
     {
@@ -494,6 +623,118 @@ RGBLed::RGBLed(int rPin, int gPin, int bPin)
 {
 
 }
+
+void RGBLed::begin()
+{
+    pinMode(redLedPin, OUTPUT);
+    pinMode(greenLedPin, OUTPUT);
+    pinMode(blueLedPin, OUTPUT);
+
+    setColor(RGBLed::RgbColor::Violet);
+    getColor();
+}
+
+void RGBLed::getColor()
+{
+    Serial.print("Current Color: ");
+    switch (currentRGBLedColor)
+    {
+        case RgbColor::Red:    Serial.println("Red"); break;
+        case RgbColor::Orange: Serial.println("Orange"); break;
+        case RgbColor::Yellow: Serial.println("Yellow"); break;
+        case RgbColor::Green:  Serial.println("Green"); break;
+        case RgbColor::Blue:   Serial.println("Blue"); break;
+        case RgbColor::Violet: Serial.println("Violet"); break;
+        default:               Serial.println("Unknown"); break;
+    }
+}
+
+void RGBLed::setColor(RgbColor color)
+{
+    // Start with all colors off
+    digitalWrite(redLedPin, LOW);
+    digitalWrite(greenLedPin, LOW);
+    digitalWrite(blueLedPin, LOW);
+
+    // Store the current color
+    currentRGBLedColor = color;
+
+    switch(color)
+    {
+        case RgbColor::Red:
+            digitalWrite(redLedPin, HIGH);
+            break;
+
+        case RgbColor::Orange:
+            digitalWrite(redLedPin, HIGH);
+            analogWrite(greenLedPin, 128); // mix red + half green
+            break;
+
+        case RgbColor::Yellow:
+            digitalWrite(redLedPin, HIGH);
+            digitalWrite(greenLedPin, HIGH);
+            break;
+
+        case RgbColor::Green:
+            digitalWrite(greenLedPin, HIGH);
+            break;
+
+        case RgbColor::Blue:
+            digitalWrite(blueLedPin, HIGH);
+            break;
+
+        case RgbColor::Violet:
+            digitalWrite(redLedPin, HIGH);
+            digitalWrite(blueLedPin, HIGH);
+            break;
+    }
+}
+
+/* ------------------------------------------------------------ */
+/*                   BUZZER Implementation                      */
+/* ------------------------------------------------------------ */
+
+Buzzer::Buzzer(int pin, unsigned long duration )
+    : buzzerPin(pin), beepDuration(duration)
+{
+
+}
+
+void Buzzer::begin()
+{
+    pinMode(buzzerPin, OUTPUT);
+    beep(100);
+}
+
+void Buzzer::beep(unsigned long duration)
+{
+    beepDuration = duration;       
+    isBeeping = true;
+    previousMillis = millis();     
+    digitalWrite(buzzerPin, HIGH); 
+}
+
+void Buzzer::update()
+{
+    if (isBeeping && (millis() - previousMillis >= beepDuration))
+    {
+        digitalWrite(buzzerPin, LOW); // turn off after time passes
+        isBeeping = false;
+    }
+}
+
+void Buzzer::refreshOutput()
+{
+    if (isBeeping) 
+    {
+        digitalWrite(buzzerPin, HIGH);
+    } else 
+    {
+        digitalWrite(buzzerPin, LOW);
+    }
+}
+
+
 
 
 
