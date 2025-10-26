@@ -2,7 +2,7 @@
  * @file main.ino
  * @brief Clock program
  * @author HobbyHacker
- * @version 0.1.2
+ * @version 0.1.3
  * @date 2025-10-20
  *
  * @details
@@ -315,19 +315,102 @@ class Buzzer
 /*                        BUTTON CLASS                          */
 /* ------------------------------------------------------------ */
 
+/**
+ * @class Button
+ * @brief Handles input from multiple physical buttons for machine control.
+ *
+ * @details
+ * The Button class provides an interface for reading and managing the state of 
+ * multiple momentary push buttons, such as those used to control machine functions 
+ * (Reset, Pause, Play, Step). It reads the button states through digital inputs and 
+ * interprets which control action was triggered.
+ * 
+ * All button pins are configured with `INPUT_PULLUP`, meaning they read **HIGH** when 
+ * not pressed and **LOW** when pressed. This eliminates the need for external resistors 
+ * and ensures stable logic levels.
+ *
+ * ### Behavior
+ * - Reads up to four control buttons (Reset, Pause, Play, Step).
+ * - Uses an enum-based event system to simplify event handling.
+ * - Designed for non-blocking reads and continuous polling within the main loop.
+ * - Can be extended later to include **debouncing** or **long-press detection**.
+ *
+ * @note 
+ * - Uses `INPUT_PULLUP`, so a pressed button reads LOW.
+ * - For stable operation with mechanical buttons, consider adding a 
+ *   software debounce delay or hardware RC filter.
+ * - Use @ref handleInput() in the main loop to continuously read states.
+ */
 class Button
 {
     public:
-        Button();
+        /**
+        * @enum ButtonEvent
+        * @brief Represents the specific action triggered by a button press.
+        *
+        * @details
+        * Each event corresponds to one of the available control buttons.
+        * The `None` value indicates that no buttons are currently pressed.
+        */
+        enum class ButtonEvent{ None, ResetPressed, PausedPressed, PlayPressed, StepPressed};
+        
+        /**
+        * @brief Creates a new Button manager.
+        *
+        * @param resetBtnPin The pin connected to the Reset button.
+        * @param pauseBtnPin The pin connected to the Pause button.
+        * @param playBtnPin The pin connected to the Play button.
+        * @param stepBtnPin The pin connected to the Step button.
+        *
+        * @details
+        * This constructor stores the assigned pin numbers for each button.
+        * It does not configure the pins yet — call @ref begin() in setup() 
+        * before calling @ref handleInput().
+        */
+        Button(int resetBtnPin, int pauseBtnPin, int playBtnPin, int stepBtnPin);
+
+        /**
+        * @brief Initializes button pins for input.
+        *
+        * @details
+        * Configures all connected button pins as `INPUT_PULLUP`, ensuring 
+        * they default to a HIGH state when not pressed. This prevents 
+        * floating inputs and allows direct wiring to ground.
+        *
+        * Should be called once in `setup()`.
+        */
         void begin();
+
+        /**
+        * @brief Reads button inputs and determines which event occurred.
+        *
+        * @details
+        * This method performs a quick scan of all connected buttons and 
+        * returns the first detected press as a `ButtonEvent`.  
+        * 
+        * It is designed for simple polling — call it once per loop cycle.
+        * Currently, there is no debouncing; future revisions may add timing-based filtering.
+        *
+        * @return A value of @ref ButtonEvent indicating which button was pressed.
+        */
+        ButtonEvent handleInput();
+
+        
+        /**
+        * @brief Placeholder for future input logic or debouncing.
+        * 
+        * @details
+        * Currently unused. Reserved for possible input stabilization or 
+        * multi-button logic (e.g., long press, double-click).
+        */
         void update();
         
 
     private:
-        int resetButton;
-        int pauseButton;
-        int playButton;
-        int stepButton;
+        int resetButton; ///< Digital pin number for Reset button.
+        int pauseButton; ///< Digital pin number for Pause button.
+        int playButton; ///< Digital pin number for Play button.
+        int stepButton; ///< Digital pin number for Step button.
 };
 
 
@@ -442,6 +525,7 @@ class MachineState
         HeartBeat heartbeat; 
         RGBLed rgbLed;
         Buzzer buzzer;
+        Button button;
 };
 
 /* ------------------------------------------------------------ */
@@ -477,7 +561,8 @@ MachineState::MachineState()
     :   currentState(State::Reset), 
         heartbeat(13, 500), 
         rgbLed(3, 5, 6), 
-        buzzer(7, 100)
+        buzzer(7, 100), 
+        button(8, 9, 10, 11)
 {
     // Start in Reset mode (will transition to Run in begin)
 }
@@ -493,6 +578,7 @@ void MachineState::begin()
     heartbeat.begin();
     rgbLed.begin();
     buzzer.begin();
+    button.begin();
 
     // State Transition
     setState(State::Run);
@@ -501,7 +587,16 @@ void MachineState::begin()
 void MachineState::handleInput()
 {
     // Handle all input
-    // Serial.println("Handling Input"); // Muted
+    Button::ButtonEvent event = button.handleInput();
+
+    switch (event)
+    {
+        case Button::ButtonEvent::ResetPressed: Serial.println("Reset Button Pressed..."); buzzer.beep(100); break;
+        case Button::ButtonEvent::PausedPressed: Serial.println("Pause Button Pressed..."); break;
+        case Button::ButtonEvent::PlayPressed: Serial.println("Play Button Pressed..."); break;
+        case Button::ButtonEvent::StepPressed: Serial.println("Step Button Pressed..."); break;
+        case Button::ButtonEvent::None: Serial.println("No Button Pressed"); break;
+    }
 }
 
 void MachineState::update()
@@ -528,17 +623,13 @@ void MachineState::refreshOutput()
     switch (currentState)
     {
         case State::Reset:
-            rgbLed.setColor(RGBLed::RgbColor::Red);
             break;
         case State::Pause:
-            rgbLed.setColor(RGBLed::RgbColor::Orange);
             break;
         case State::Run:
-            rgbLed.setColor(RGBLed::RgbColor::Green);
             break;
         case State::Step:
-            rgbLed.setColor(RGBLed::RgbColor::Blue);
-            buzzer.beep(100); 
+
             break;
     }
 }
@@ -559,7 +650,7 @@ void MachineState::setState(State newState)
         {
             case State::Reset: Serial.println("Reset"); break;
             case State::Pause: Serial.println("Pause"); break;
-            case State::Run: Serial.println("Run"); break;
+            case State::Run: Serial.println("Run"); rgbLed.setColor(RGBLed::RgbColor::Blue); break;
             case State::Step: Serial.println("Step"); break;
         }
     }
@@ -580,28 +671,22 @@ void HeartBeat::begin()
 
 void HeartBeat::update()
 {
+    if (interval == 0)
+    {
+        digitalWrite(ledPin, LOW);
+        return;
+    }
 
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= interval) {
+        previousMillis = currentMillis;
+        isOn = !isOn;
+    }
 }
 
 void HeartBeat::refreshOutput()
 {
-    unsigned long currentMillis = millis();
-
-    if (currentMillis - previousMillis >= interval)
-    {
-        // Serial.print("Previous Time: "); Serial.println(previousMillis); muted       
-        previousMillis = currentMillis;
-        // Serial.print("Elapsed Time: "); Serial.println(currentMillis); muted
-        
-        isOn = !isOn;
-        digitalWrite(ledPin, isOn ? HIGH : LOW);
-        
-    }
-    else if (interval == 0)
-    {
-        digitalWrite(ledPin, LOW);
-    }
-
+    digitalWrite(ledPin, isOn ? HIGH : LOW);
 }
 
 void HeartBeat::stepBeat()
@@ -630,7 +715,7 @@ void RGBLed::begin()
     pinMode(greenLedPin, OUTPUT);
     pinMode(blueLedPin, OUTPUT);
 
-    setColor(RGBLed::RgbColor::Violet);
+    setColor(RGBLed::RgbColor::Red);
     getColor();
 }
 
@@ -728,11 +813,44 @@ void Buzzer::refreshOutput()
     if (isBeeping) 
     {
         digitalWrite(buzzerPin, HIGH);
-    } else 
+    } 
+    else 
     {
         digitalWrite(buzzerPin, LOW);
     }
 }
+
+/* ------------------------------------------------------------ */
+/*                   BUTTON Implementation                      */
+/* ------------------------------------------------------------ */
+
+Button::Button(int resetBtnPin, int pauseBtnPin, int playBtnPin, int stepBtnPin)
+    : resetButton(resetBtnPin), pauseButton(pauseBtnPin), playButton(playBtnPin), stepButton(stepBtnPin)
+{
+
+}
+
+void Button::begin()
+{
+    pinMode(resetButton, INPUT_PULLUP);
+    pinMode(pauseButton, INPUT_PULLUP);
+    pinMode(playButton, INPUT_PULLUP);
+    pinMode(stepButton, INPUT_PULLUP);
+
+    Serial.print("Buttons Initialized");
+}
+
+Button::ButtonEvent Button::handleInput()
+{
+    if (digitalRead(resetButton) == LOW) return ButtonEvent::ResetPressed;
+    if (digitalRead(pauseButton) == LOW) return ButtonEvent::PausedPressed;
+    if (digitalRead(playButton) == LOW) return ButtonEvent::PlayPressed;
+    if (digitalRead(stepButton) == LOW) return ButtonEvent::StepPressed;    
+
+    return ButtonEvent::None;
+}
+
+
 
 
 
