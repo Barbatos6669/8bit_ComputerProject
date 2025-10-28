@@ -1,46 +1,63 @@
+
 /**
  * @file main.ino
- * @brief Clock program
+ * @brief Clock program for an 8-bit computer learning project.
  * @author HobbyHacker
- * @version 0.1.4
+ * @version 0.1.5
  * @date 2025-10-20
  *
  * @details
- * This is an experimental project to help me and maybe others learn and better understand
- * how a computer works by utilizing an ATmega and other integrated circuits
- * to construct the basic computational components of a simple CPU system.
+ * This experimental project is intended to help me and others learn and
+ * better understand how a computer works by using an ATmega and other
+ * integrated circuits to construct the basic computational components of
+ * a simple CPU-like system.
+ *
+ * The file contains the main application logic and several small utility
+ * classes used by the system (Heartbeat, RGB LED, Buzzer, Button and
+ * MachineState). Documentation has been cleaned up throughout to improve
+ * clarity and correct spelling/grammar.
  */
 
 /* ------------------------------------------------------------ */
-/*                      PIN CONFIGUARATION                      */
+/*                      PIN CONFIGURATION                       */
 /* ------------------------------------------------------------ */
 
 struct PinMap
 {
+    /** Heartbeat LED pin (digital output) */
     int heartbeatLed;
+    /** Counter reset pin - used to pulse a connected counter/reset line */
     int counterReset;
+    /** Buzzer output pin */
     int buzzer;
+    /** Reset button pin (INPUT_PULLUP) */
     int buttonReset;
+    /** Pause button pin (INPUT_PULLUP) */
     int buttonPause;
+    /** Play button pin (INPUT_PULLUP) */
     int buttonPlay;
+    /** Step button pin (INPUT_PULLUP) */
     int buttonStep;
+    /** RGB LED red channel pin (PWM capable) */
     int rgbRed;
+    /** RGB LED green channel pin (PWM capable) */
     int rgbGreen;
+    /** RGB LED blue channel pin (PWM capable) */
     int rgbBlue; 
 };
 
 PinMap pins =
 {
     13, // heartbeat LED
-    2,  // counter reset pin
-    7,  // buzzer
-    8,  // reset button
-    9,  // pause button
-    10, // play button
-    11, // step button
-    3,  // RGB red
-    5,  // RGB green
-    6   // RGB blue
+    3,  // counter reset pin (pulse output)
+    11,  // buzzer
+    2,  // reset button
+    A3,  // pause button
+    A4, // play button
+    A5, // step button
+    A0,  // RGB red
+    A1,  // RGB green
+    A2   // RGB blue
 };
 
 /* ------------------------------------------------------------ */
@@ -53,93 +70,115 @@ PinMap pins =
 
 /**
  * @class HeartBeat
- * @brief Provides a non-blocking blinking or pulse signal for system feedback.
+ * @brief Non-blocking LED pulse/blink helper for system feedback.
  *
  * @details
- * The HeartBeat class is used to create a timed pulse or LED blink that
- * represents a system heartbeat. It uses `millis()` for timing, so it does not
- * block the main loop — allowing other code to run simultaneously.
- * 
- * ### Behavior
- * - Toggles a digital pin at a regular interval (default 500 ms).
- * - Setting the interval to 0 disables the heartbeat (output forced LOW).
- * - Useful for showing system status, timing, or “alive” signals.
- * 
- * ### Usage Example
- * HeartBeat heartbeat(13, 500);  // LED on pin 13, 500ms blink interval
+ * The HeartBeat class generates a timed blink or pulse on a digital
+ * output (typically an LED) using millis() for timing so it does not
+ * block the main loop. It can be used as a status/heartbeat indicator
+ * and also to pulse a counter-reset line.
  *
- * void setup() {
- *     heartbeat.begin();
- * }
+ * Behavior summary:
+ *  - Toggles an output at a regular interval (default 500 ms).
+ *  - Setting the interval to 0 disables automatic blinking (output is held LOW).
+ *  - stepBeat() performs a short, immediate pulse for manual triggering.
+ *  - pulseOnce() provides a single non-blocking pulse of a given duration.
  *
- * void loop() {
- *     heartbeat.update();
- *     heartbeat.tick();
- * }
- * ```
- *
- * ### Notes
- * - @ref update() should be called continuously inside `loop()`.
- * - @ref tick() performs the actual output toggle.
- * - @ref stepBeat() can be used to manually trigger a pulse.
+ * Usage:
+ *  HeartBeat hb(pins, 500);
+ *  hb.begin();
+ *  // in loop:
+ *  hb.update();        // non-blocking timing logic
+ *  hb.refreshOutput(); // apply the current output level to the pin
  */
 class HeartBeat
 {
     public:
         /**
-         * @brief Default constructor.
-         * @details
-         * Initializes internal timing variables but does not start the heartbeat.
-         * Call @ref begin() to configure the output pin and start operation.
+         * @brief Construct a HeartBeat instance.
+         * @param pins Reference to the project PinMap.
+         * @param ms Blink interval in milliseconds (0 = disabled).
          */
         HeartBeat(const PinMap& pins, unsigned long ms = 500);
 
         /**
-         * @brief Prepares the heartbeat system for operation.
-         * @details
-         * Configures the designated output pin (such as an LED) and initializes
-         * internal timing values. Should be called once during setup().
+         * @brief Initialize hardware pins and internal state.
+         * @note Call once from setup().
          */
         void begin();
 
         /**
-         * @brief Updates the heartbeat logic.
-         * @details
-         * Called continuously within the main loop to check timing intervals
-         * and determine whether a pulse event should occur. Does not block.
+         * @brief Update timing logic (non-blocking).
+         * @details Should be called frequently from loop(); it will flip
+         * the internal state when the configured interval elapses.
          */
         void update();
 
         /**
-         * @brief Performs a timed output pulse or LED toggle.
-         * @details
-         * Called when the heartbeat interval has elapsed to produce the
-         * actual output effect (such as toggling an LED or producing a short
-         * tone). Intended to be triggered from @ref update().
+         * @brief Apply the internal output state to the hardware pin.
+         * @details Call after update() or when a manual change is needed.
          */
         void refreshOutput();
 
         /**
-         * @brief Forces an immediate heartbeat pulse.
-         * @details
-         * Can be used for diagnostic purposes or to synchronize subsystems
-         * with an external event.
+         * @brief Force a short manual pulse using blocking delay.
+         * @note Uses a short delay; intended for diagnostic/manual trigger only.
          */
         void stepBeat();
 
+        /**
+         * @brief Start a non-blocking single pulse.
+         * @param duration Duration in ms the LED remains HIGH for the pulse.
+         * @details Call repeatedly in loop(); the method manages its own state
+         * and will return after the pulse completes.
+         */
         void pulseOnce(unsigned long duration = 50);
 
+        /**
+         * @brief Pulse the counter-reset output for a short fixed time.
+         * @details This uses a blocking delay; it is intended for simple reset pulses.
+         */
         void resetCounter();
 
+        /**
+         * @brief Set the automatic blink interval.
+         * @param ms Interval in milliseconds (0 disables automatic blinking).
+         */
         void setInterval(unsigned long ms);
+
+        /**
+         * @brief Force the heartbeat output to a specific boolean level.
+         * @param level true to set the LED/pin HIGH, false to set LOW.
+         */
         void setOutput(bool level);
+
+        /**
+         * @brief Get the currently configured blink interval.
+         * @return interval in milliseconds.
+         */
         unsigned long getInterval() const;
+
+        /**
+         * @brief Query whether the heartbeat is currently ON.
+         * @return true if the heartbeat output is HIGH.
+         */
         bool getState() const;
 
     private:
+        /** Reference to project pin assignment map. */
         const PinMap& pins;
+
+        /**
+         * @brief Timestamp of the last toggle used for non-blocking timing.
+         *
+         * Stored in milliseconds as returned by millis().
+         */
         unsigned long previousMillis;
+
+        /** Blink interval in milliseconds (0 disables automatic blinking). */
         unsigned long interval;
+
+        /** Current logical output state for the heartbeat LED (true = HIGH). */
         bool isOn;
 };
 
@@ -149,113 +188,67 @@ class HeartBeat
 
 /**
  * @class RGBLed
- * @brief Controls an RGB LED to display various color states or visual feedback.
+ * @brief Simple RGB LED driver for visual system state.
  *
  * @details
- * The RGBLed class provides an interface for driving a tri-color (Red, Green, Blue)
- * LED module using three digital pins. Each color channel can be toggled independently
- * or used in combination to produce composite colors.
+ * Controls a common RGB LED using three digital pins. Provides a small set
+ * of named colors and a setColor() convenience method. The implementation
+ * uses digitalWrite and analogWrite where a mix of channels is desired.
  *
- * This class is designed for use in embedded systems where an RGB LED represents
- * system states (e.g., Reset, Run, Pause) or provides general visual feedback.
- *
- * ### Example Usage
- * 
- * RGBLed statusLed(9, 10, 11);
- * 
- * void setup() {
- *     statusLed.begin();
- *     statusLed.setColor(RGBLed::rgbColor::Green);
- * }
- * 
- * void loop() {
- *     statusLed.update();
- * }
- *
+ * Usage:
+ *  RGBLed statusLed(pins);
+ *  statusLed.begin();
+ *  statusLed.setColor(RGBLed::RgbColor::Green);
  */
 class RGBLed
 {
 public:
     /**
-     * @enum rgbColor
-     * @brief Enumerates predefined color states for the RGB LED.
-     *
-     * @details
-     * Each enum value represents a basic color that can be produced
-     * by combining the red, green, and blue channels.
+     * @enum RgbColor
+     * @brief Predefined colors that the RGB LED can show.
      */
     enum class RgbColor {Red, Orange, Yellow, Green, Blue, Violet, Off};
 
     /**
-    * @brief Creates a new RGB LED controller.
-    * 
-    * @param rPin The digital pin connected to the red channel of the LED.
-    * @param gPin The digital pin connected to the green channel of the LED.
-    * @param bPin The digital pin connected to the blue channel of the LED.
-    * 
-    * @details
-    * This constructor sets up an RGB LED object and stores the pin numbers for each color channel.
-    * It does not configure the pins or send any signals yet — call @ref begin() in setup() 
-    * to initialize the hardware before changing colors.
-    */
+     * @brief Construct an RGBLed controller.
+     * @param pins Reference to the global PinMap with RGB pins defined.
+     */
     RGBLed(const PinMap& pins);
 
     /**
-    * @brief Prepares the RGB LED for use.
-    *
-    * @details
-    * This function tells the microcontroller which pins control the LED’s red,
-    * green, and blue channels. It also turns all channels off to start from
-    * a known state. Think of it as “plugging in the LED and turning it off”
-    * before any colors are shown.
-    *
-    * Should be called once in setup().
-    */
+     * @brief Configure the RGB pins as outputs and set a known state.
+     * @note Call from setup() once.
+     */
     void begin();
 
     /**
-     * @brief Handles input or interaction logic.
-     * 
-     * @details
-     * Intended for reading input (such as buttons or machine states) that
-     * influence the LED’s behavior. This method can be expanded to interpret
-     * system signals and automatically change the LED color.
+     * @brief Placeholder for reading inputs that might change LED behavior.
+     * @details Currently unused but provided for future expansion.
      */
     void handleInput();
 
     /**
-     * @brief Updates LED state or timing logic.
-     * 
-     * @details
-     * Called continuously within the main loop to refresh LED output,
-     * animate color transitions, or apply timed effects.
-     * 
-     * In its base form, it can be left empty until timing-based features
-     * (like fades or blinking) are implemented.
+     * @brief Placeholder for animation/timing updates (if added later).
      */
     void update();
 
     /**
-     * @brief Retrieves the current LED color.
-     * 
-     * @details
-     * Returns the currently active color, which can be used for
-     * debugging, display updates, or synchronized subsystem behavior.
+     * @brief Log or otherwise report the current color to Serial.
+     * @note This returns void; use getColorName() if you want a string return instead.
      */
     void getColor();
 
     /**
-     * @brief Changes the LED color output.
-     * 
-     * @details
-     * Applies a new color by adjusting the LED output channels. The implementation
-     * can either use predefined enum colors (from @ref rgbColor) or direct RGB values
-     * depending on future expansion.
+     * @brief Set the LED to one of the predefined colors.
+     * @param color The desired color from the RgbColor enum.
      */
     void setColor(RgbColor color);
 
 private:
+    /** The last color set on the RGB LED. */
     RgbColor currentRGBLedColor;
+
+    /** Reference to the project's pin mapping (RGB pins used here). */
     const PinMap& pins;
 };
 
@@ -265,80 +258,73 @@ private:
 
 /**
  * @class Buzzer
- * @brief Provides non-blocking tone or beep functionality.
+ * @brief Non-blocking buzzer/tone manager.
  *
  * @details
- * The Buzzer class allows timed beeps using millis() instead of delay(),
- * ensuring that system timing and other logic continue to run smoothly.
+ * The Buzzer class turns a digital output on for a specified duration using
+ * millis() for non-blocking timing. It optionally drives the RGB LED to
+ * a warning color while beeping.
  *
- * ### Behavior
- * - Call @ref beep(duration) to start a timed beep.
- * - @ref update() automatically turns it off after the duration expires.
- * - Can be tied into @ref refreshOutput() for synchronized system updates.
- *
- * ### Example
- * ```cpp
- * Buzzer buzzer(7, 100);
- * 
- * void setup() {
- *     buzzer.begin();
- * }
- * 
- * void loop() {
- *     buzzer.update();
- *     buzzer.refreshOutput();
- * }
- * ```
+ * Usage:
+ *  Buzzer buzzer(pins, 100, &rgbLed);
+ *  buzzer.begin();
+ *  buzzer.beep(200);
+ *  // in loop:
+ *  buzzer.update();
+ *  buzzer.refreshOutput();
  */
 class Buzzer
 {
     public:
         /**
-        * @brief Creates a new buzzer controller.
-        * @param pin The digital pin connected to the buzzer.
-        * @param duration The default duration (ms) of each beep.
+        * @brief Construct a Buzzer controller.
+        * @param pins Reference to the PinMap.
+        * @param duration Default beep duration in milliseconds.
+        * @param led Optional pointer to an RGBLed instance (used to show a color while beeping).
         */
         Buzzer(const PinMap& pins, unsigned long duration, RGBLed* led = nullptr);
 
         /**
-        * @brief Initializes the buzzer pin and ensures it starts off.
+        * @brief Configure the buzzer pin and perform a startup beep.
         */
         void begin();
 
         /**
-        * @brief Starts a beep for a given duration.
-        * @param duration The duration (ms) the buzzer stays on.
+        * @brief Start a beep for a specific duration (non-blocking).
+        * @param duration How long the buzzer stays on, in milliseconds.
         */
         void beep(unsigned long duration);
 
         /**
-        * @brief Updates the buzzer logic.
-        * @details
-        * Checks if the beep duration has elapsed and stops the buzzer automatically.
-        * Must be called frequently in the main loop.
+        * @brief Check the time and stop the beep when the duration expires.
+        * @note Must be called regularly from loop().
         */
         void update();
 
         /**
-        * @brief Outputs the buzzer state to hardware.
-        * @details
-        * Writes HIGH or LOW to the buzzer pin based on current state.
+        * @brief Apply the buzzer state to the hardware pin.
         */
         void refreshOutput();        
 
         /**
-        * @brief Returns whether the buzzer is currently active.
-        * @return true if beeping, false otherwise.
+        * @brief Query whether the buzzer is currently beeping.
+        * @return true if active, false otherwise.
         */
         bool getState();
 
     private:
+    /** Optional pointer to an RGBLed used to show a warning color while beeping. */
     RGBLed* rgbLed;
+    /** Reference to the PinMap containing the buzzer pin. */
     const PinMap& pins;
 
+    /** Output pin for the buzzer (not currently used; prefer pins.buzzer). */
     int buzzerPin; ///< Output pin connected to the buzzer.
-    unsigned long beepDuration; ///< Duration of current beep.
+    /** Duration of the current beep in milliseconds. */
+    unsigned long beepDuration; ///< Duration of the current beep in ms.
+    /** Timestamp used for non-blocking timing of buzzer events. */
     unsigned long previousMillis; ///< Timestamp for non-blocking timing.
+    /** Whether the buzzer is currently active. */
     bool isBeeping; ///< Whether the buzzer is currently active.
 };
 
@@ -348,111 +334,74 @@ class Buzzer
 
 /**
  * @class Button
- * @brief Handles input from multiple physical buttons for machine control.
+ * @brief Reads and debounces multiple control buttons (Reset, Pause, Play, Step).
  *
  * @details
- * The Button class provides an interface for reading and managing the state of 
- * multiple momentary push buttons, such as those used to control machine functions 
- * (Reset, Pause, Play, Step). It reads the button states through digital inputs and 
- * interprets which control action was triggered.
- * 
- * All button pins are configured with `INPUT_PULLUP`, meaning they read **HIGH** when 
- * not pressed and **LOW** when pressed. This eliminates the need for external resistors 
- * and ensures stable logic levels.
- *
- * ### Behavior
- * - Reads up to four control buttons (Reset, Pause, Play, Step).
- * - Uses an enum-based event system to simplify event handling.
- * - Designed for non-blocking reads and continuous polling within the main loop.
- * - Can be extended later to include **debouncing** or **long-press detection**.
- *
- * @note 
- * - Uses `INPUT_PULLUP`, so a pressed button reads LOW.
- * - For stable operation with mechanical buttons, consider adding a 
- *   software debounce delay or hardware RC filter.
- * - Use @ref handleInput() in the main loop to continuously read states.
+ * Buttons are configured with INPUT_PULLUP. A pressed button reads LOW.
+ * The class currently implements a simple debounce delay and reports a
+ * single event for each press transition (HIGH -> LOW).
  */
 class Button
 {
     public:
         /**
         * @enum ButtonEvent
-        * @brief Represents the specific action triggered by a button press.
-        *
-        * @details
-        * Each event corresponds to one of the available control buttons.
-        * The `None` value indicates that no buttons are currently pressed.
+        * @brief Events produced by the button handler.
         */
         enum class ButtonEvent{ None, ResetPressed, PausedPressed, PlayPressed, StepPressed};
         
         /**
-        * @brief Creates a new Button manager.
-        *
-        * @param resetBtnPin The pin connected to the Reset button.
-        * @param pauseBtnPin The pin connected to the Pause button.
-        * @param playBtnPin The pin connected to the Play button.
-        * @param stepBtnPin The pin connected to the Step button.
-        *
-        * @details
-        * This constructor stores the assigned pin numbers for each button.
-        * It does not configure the pins yet — call @ref begin() in setup() 
-        * before calling @ref handleInput().
+        * @brief Construct a Button manager.
+        * @param pins Reference to the project's PinMap.
         */
         Button(const PinMap& pins);
 
         /**
-        * @brief Initializes button pins for input.
-        *
-        * @details
-        * Configures all connected button pins as `INPUT_PULLUP`, ensuring 
-        * they default to a HIGH state when not pressed. This prevents 
-        * floating inputs and allows direct wiring to ground.
-        *
-        * Should be called once in `setup()`.
+        * @brief Initialize button pins (INPUT_PULLUP).
+        * @note Call once from setup().
         */
         void begin();
 
         /**
-        * @brief Reads button inputs and determines which event occurred.
-        *
-        * @details
-        * This method performs a quick scan of all connected buttons and 
-        * returns the first detected press as a `ButtonEvent`.  
-        * 
-        * It is designed for simple polling — call it once per loop cycle.
-        * Currently, there is no debouncing; future revisions may add timing-based filtering.
-        *
-        * @return A value of @ref ButtonEvent indicating which button was pressed.
+        * @brief Poll all buttons and return the first detected press event.
+        * @return A ButtonEvent value indicating which button transitioned to pressed.
+        * @details Uses a small debounce delay (debounceDelay). Returns None if no
+        * valid press is detected.
         */
         ButtonEvent handleInput();
 
-        
         /**
-        * @brief Placeholder for future input logic or debouncing.
-        * 
-        * @details
-        * Currently unused. Reserved for possible input stabilization or 
-        * multi-button logic (e.g., long press, double-click).
+        * @brief Reserved for future debouncing or multi-button logic.
         */
         void update();
 
+        /**
+        * @brief Query whether any button press state is currently recorded.
+        * @return true if a button press is currently latched internally (not used).
+        */
         bool getButtonStatus();
         
-
     private:
+        /** Reference to project pin mapping used by the button manager. */
         const PinMap& pins;
 
+        /** Digital pin for the Reset button (INPUT_PULLUP). */
         int resetButton; ///< Digital pin number for Reset button.
+        /** Digital pin for the Pause button (INPUT_PULLUP). */
         int pauseButton; ///< Digital pin number for Pause button.
+        /** Digital pin for the Play button (INPUT_PULLUP). */
         int playButton; ///< Digital pin number for Play button.
+        /** Digital pin for the Step button (INPUT_PULLUP). */
         int stepButton; ///< Digital pin number for Step button.
 
+        /** Timestamp used for simple debounce logic. */
         unsigned long lastDebounceTime;
+        /** Debounce delay in milliseconds used to filter spurious presses. */
         const unsigned long debounceDelay = 100;
 
+        /** Internal flag used to indicate a button press (reserved for future use). */
         bool buttonPressed;
 };
-
 
 /* ------------------------------------------------------------ */
 /*                        MACHINESTATE CLASS                    */
@@ -460,112 +409,72 @@ class Button
 
 /**
  * @class MachineState
- * @brief Controls the overall flow of the machine.
+ * @brief Central controller for machine mode and subsystem coordination.
+ *
  * @details
- * The MachineState class manages the current operational mode of the system,
- * handling transitions such as Reset, Pause, Run, and Step. It acts as the
- * central controller that determines how other subsystems (LEDs, buzzer,
- * heartbeat, etc.) behave based on the active state.
+ * Manages machine modes (Reset, Pause, Run, Step) and coordinates the
+ * HeartBeat, RGBLed, Buzzer and Button subsystems to reflect the current
+ * state and process user input.
  */
 class MachineState
 {
     public:
         /**
         * @enum State
-        * @brief Represents the current operating mode of the machine.
-        * @details
-        * Each state corresponds to a distinct phase of system operation:
-        * - **Reset** — Initializes or restarts the system.
-        * - **Pause** — Temporarily halts execution.
-        * - **Run** — Normal operating state.
-        * - **Step** — Executes a single instruction or cycle.
+        * @brief Machine operating modes.
         */
         enum class State {Reset, Pause, Run, Step};
 
         /**
-        * @brief Default constructor.
-        * @details
-        * Initializes the machine in the Reset state.
+        * @brief Construct the MachineState controller.
+        * @param pins Reference to the project's PinMap.
         */
         MachineState(const PinMap& pins);
 
         /**
-        * @brief Initializes subsystems or hardware.
-        * @details
-        * Configures serial, LEDs, and other components.
-        * Called once in setup() before the main loop begins.
+        * @brief Initialize all subsystems and hardware (call once from setup()).
         */
         void begin();
 
         /**
-        * @brief Reads and processes external input signals.
-        * @details
-        * Captures button presses or sensor values and stores them 
-        * for later use by the update() method. This function should 
-        * be called at the beginning of each main loop cycle to ensure 
-        * that all user interactions are registered before logic is processed.
+        * @brief Read and process external input signals (call early in loop()).
         */
         void handleInput();
 
         /**
-        * @brief Updates the machine logic and subsystem states.
-        * @details
-        * Executes one update cycle for the machine, applying logic based on 
-        * the current system state (Reset, Pause, Run, or Step). This function 
-        * is responsible for coordinating all subsystems, such as LEDs, buzzer, 
-        * and heartbeat, to ensure synchronized behavior.
-        * 
-        * Typical flow:
-        * - Evaluates the current machine state.
-        * - Applies any pending transitions from handleInput().
-        * - Updates subsystem outputs accordingly.
-        * 
-        * @note Should be called continuously from loop() after handleInput().
+        * @brief Update internal logic and subsystem states (call each loop).
         */
         void update();
 
         /**
-        * @brief Sends all changes out to the hardware.
-        *
-        * @details
-        * This runs after all updates have been calculated.
-        * It makes LEDs blink, buzzers beep, and anything else
-        * that should respond to the current state actually happen.        */
+        * @brief Flush and apply all output changes to hardware (call at end of loop()).
+        */
         void refreshOutput();
 
         /**
-        * @brief Retrieves the current operating state of the machine.
-        * @details
-        * Returns the current system state (Reset, Pause, Run, or Step)
-        * so that other components or debug routines can query and respond
-        * to the active mode of operation.
-        * 
-        * @return The current machine state as a value of the @ref State enum.
+        * @brief Get the current machine state.
+        * @return Current State enum.
         */
         State getState() const;
 
         /**
-        * @brief Updates the machine's operating state.
-        * @details
-        * Changes the system state to the specified new state. If the new state
-        * differs from the current one, a transition occurs and a debug message
-        * is printed to the serial monitor to indicate the change.
-        * 
-        * Typical uses include:
-        * - Switching between Run and Pause modes.
-        * - Resetting the system to a known state.
-        * - Entering Step mode for manual clock cycles.
-        * 
-        * @param newState The desired next state of the machine.
+        * @brief Change the machine state (prints transitions to Serial).
+        * @param newState Desired state to transition to.
         */
         void setState(State newState);
 
     private:
+        /** Reference to global pin mapping. */
         const PinMap& pins;
+        /** Current operating state of the machine. */
         State currentState;
+        /** Heartbeat subsystem used for visual/counter pulses. */
         HeartBeat heartbeat; 
+        /** RGB LED subsystem used to indicate machine state. */
         RGBLed rgbLed;
+        /** Buzzer subsystem for audio feedback. */
         Buzzer buzzer;
+        /** Button manager used to read user inputs. */
         Button button;
 };
 
@@ -573,6 +482,7 @@ class MachineState
 /*                  GLOBAL OBJECT CONSTRUCTED                   */
 /* ------------------------------------------------------------ */
 
+/** Global machine state controller instance (constructed using global "pins"). */
 MachineState machineState(pins);
 
 /* ------------------------------------------------------------ */
@@ -606,29 +516,27 @@ MachineState::MachineState(const PinMap& pins)
         buzzer(pins, 100, &rgbLed), 
         button(pins)
 {
-    // Start in Reset mode (will transition to Run in begin)
+    // Start in Reset mode (begin() will transition to Run)
 }
 
 void MachineState::begin()
 {
-    // Initialize Subsystems and hardware
-    delay(500); // Waiting half a second
+    // Initialize subsystems and hardware
+    delay(500); // short startup delay
     Serial.begin(9600);
-    Serial.println("MachinState Intialized, port 9600");
+    Serial.println("MachineState initialized on 9600 baud");
 
-    // Hardware initialization.....
     heartbeat.begin();
     rgbLed.begin();
     buzzer.begin();
     button.begin();
 
-    // State Transition
+    // Transition to running state by default
     setState(State::Run);
 }
 
 void MachineState::handleInput()
 {
-    // Handle all input
     Button::ButtonEvent event = button.handleInput();
 
     switch (event)
@@ -645,7 +553,6 @@ void MachineState::handleInput()
             {
                 buzzer.beep(100); 
                 setState(State::Pause);
-
                 heartbeat.setOutput(false);
             }
             break;
@@ -660,6 +567,7 @@ void MachineState::handleInput()
                 buzzer.beep(100); 
                 setState(State::Step);
 
+                // Immediately return to Pause and reflect the step button state
                 setState(State::Pause);  
                 bool stepHeld = (digitalRead(pins.buttonStep) == LOW);
                 heartbeat.setOutput(stepHeld);
@@ -667,7 +575,7 @@ void MachineState::handleInput()
             break;
         case Button::ButtonEvent::None: 
             {
-
+                // No action
             }
             break;
     }
@@ -683,7 +591,7 @@ void MachineState::update()
         case State::Step: heartbeat.setInterval(0); break;
     }
 
-    // --- handle step hold behaviour ---
+    // If paused, expose the step button hold state to the heartbeat output
     if (currentState == State::Pause) 
     {
         bool stepHeld = (digitalRead(pins.buttonStep) == LOW); 
@@ -696,7 +604,6 @@ void MachineState::update()
 
 void MachineState::refreshOutput()
 {
-    // handle output and end cycle
     heartbeat.refreshOutput();
     buzzer.refreshOutput();
 
@@ -734,7 +641,7 @@ void MachineState::setState(State newState)
     {
         currentState = newState;
 
-        Serial.print("State Changed to: ");
+        Serial.print("State changed to: ");
         switch (newState)
         {
             case State::Reset: Serial.println("Reset"); break;
@@ -749,7 +656,7 @@ void MachineState::setState(State newState)
 /*                   HeartBeat Implementation                   */
 /* ------------------------------------------------------------ */
 
-HeartBeat::HeartBeat(const PinMap& pins, unsigned long ms = 500)
+HeartBeat::HeartBeat(const PinMap& pins, unsigned long ms)
     : pins(pins), previousMillis(0), interval(ms), isOn(false) {}
 
 void HeartBeat::begin()
@@ -759,7 +666,7 @@ void HeartBeat::begin()
     digitalWrite(pins.heartbeatLed, LOW);
     digitalWrite(pins.counterReset, LOW);
 
-    Serial.println("HeartBeat initialized....");
+    Serial.println("HeartBeat initialized");
 }
 
 void HeartBeat::update()
@@ -783,13 +690,13 @@ void HeartBeat::refreshOutput()
 
 void HeartBeat::stepBeat()
 {
-    // Manual logic to beat the heart
+    // Manual short pulse (blocking)
     digitalWrite(pins.heartbeatLed, HIGH);
     delay(10);
     digitalWrite(pins.heartbeatLed, LOW);
 }
 
-void HeartBeat::pulseOnce(unsigned long duration = 50)
+void HeartBeat::pulseOnce(unsigned long duration)
 {
     static bool pulseActive = false;
     static unsigned long pulseStart = 0;
@@ -832,7 +739,7 @@ void HeartBeat::setOutput(bool level)
 /* ------------------------------------------------------------ */
 
 RGBLed::RGBLed(const PinMap& pins)
-    : pins(pins)
+    : pins(pins), currentRGBLedColor(RgbColor::Off)
 {
 
 }
@@ -846,7 +753,7 @@ void RGBLed::begin()
     setColor(RGBLed::RgbColor::Red);
     getColor();
 
-    Serial.print("RGBLed Initialized");
+    Serial.println("RGBLed initialized");
 }
 
 void RGBLed::getColor()
@@ -860,59 +767,52 @@ void RGBLed::getColor()
         case RgbColor::Green:  Serial.println("Green"); break;
         case RgbColor::Blue:   Serial.println("Blue"); break;
         case RgbColor::Violet: Serial.println("Violet"); break;
+        case RgbColor::Off:    Serial.println("Off"); break;
         default:               Serial.println("Unknown"); break;
     }
 }
 
 void RGBLed::setColor(RgbColor color)
 {
-    // Start with all colors off
+    // Turn all channels off first
     digitalWrite(pins.rgbRed, LOW);
     digitalWrite(pins.rgbGreen, LOW);
     digitalWrite(pins.rgbBlue, LOW);
 
-    // Store the current color
+    // Store current color
     currentRGBLedColor = color;
 
     switch(color)
     {
         case RgbColor::Red:
-            {
-                digitalWrite(pins.rgbRed, HIGH);
-            }            
+            digitalWrite(pins.rgbRed, HIGH);
             break;
 
         case RgbColor::Orange:
-            {
-                digitalWrite(pins.rgbRed, HIGH);
-                analogWrite(pins.rgbGreen, 128); // mix red + half green
-            }
+            digitalWrite(pins.rgbRed, HIGH);
+            analogWrite(pins.rgbGreen, 128); // mix red + half green
             break;
 
         case RgbColor::Yellow:
-            {
-                digitalWrite(pins.rgbRed, HIGH);
-                digitalWrite(pins.rgbGreen, HIGH);
-            }
+            digitalWrite(pins.rgbRed, HIGH);
+            digitalWrite(pins.rgbGreen, HIGH);
             break;
 
         case RgbColor::Green:
-            {
-                digitalWrite(pins.rgbGreen, HIGH);
-            }
+            digitalWrite(pins.rgbGreen, HIGH);
             break;
 
         case RgbColor::Blue:
-            {
-                digitalWrite(pins.rgbBlue, HIGH);
-            }
+            digitalWrite(pins.rgbBlue, HIGH);
             break;
 
         case RgbColor::Violet:
-            {
-                digitalWrite(pins.rgbRed, HIGH);
-                digitalWrite(pins.rgbBlue, HIGH);
-            }
+            digitalWrite(pins.rgbRed, HIGH);
+            digitalWrite(pins.rgbBlue, HIGH);
+            break;
+
+        case RgbColor::Off:
+            // already off
             break;
     }
 }
@@ -922,13 +822,13 @@ void RGBLed::setColor(RgbColor color)
 /* ------------------------------------------------------------ */
 
 Buzzer::Buzzer(const PinMap& pins, unsigned long duration, RGBLed* led)
-    : pins(pins), beepDuration(duration), rgbLed(led) {}
+    : pins(pins), beepDuration(duration), rgbLed(led), isBeeping(false), previousMillis(0) {}
 
 void Buzzer::begin()
 {
     pinMode(pins.buzzer, OUTPUT);
     beep(100);
-    Serial.print("Buzzer Initialized...");
+    Serial.println("Buzzer initialized");
 }
 
 void Buzzer::beep(unsigned long duration)
@@ -938,7 +838,8 @@ void Buzzer::beep(unsigned long duration)
     previousMillis = millis();     
     digitalWrite(pins.buzzer, HIGH); 
 
-    rgbLed->setColor(RGBLed::RgbColor::Red);
+    if (rgbLed)
+        rgbLed->setColor(RGBLed::RgbColor::Red);
 }
 
 void Buzzer::update()
@@ -967,7 +868,7 @@ void Buzzer::refreshOutput()
 /* ------------------------------------------------------------ */
 
 Button::Button(const PinMap& pins)
-    : pins(pins)
+    : pins(pins), lastDebounceTime(0), buttonPressed(false)
 {
 
 }
@@ -979,7 +880,7 @@ void Button::begin()
     pinMode(pins.buttonPlay, INPUT_PULLUP);
     pinMode(pins.buttonStep, INPUT_PULLUP);
 
-    Serial.print("Buttons Initialized");
+    Serial.println("Buttons initialized");
 }
 
 Button::ButtonEvent Button::handleInput()
@@ -999,24 +900,24 @@ Button::ButtonEvent Button::handleInput()
     bool playState  = digitalRead(pins.buttonPlay);
     bool stepState  = digitalRead(pins.buttonStep);
 
-    // --- Handle pulse timing ---
+    // --- Handle counter reset pulse timing (non-blocking) ---
     if (pulseActive && (currentTime - pulseStartTime >= 100)) {
         digitalWrite(pins.counterReset, LOW);
         pulseActive = false;
     }
 
-    // debounce timer
+    // Simple debounce: ignore changes until debounceDelay has passed
     if (currentTime - lastDebounceTime < debounceDelay)
         return ButtonEvent::None;
 
-    // Detect button press transition (HIGH → LOW)
+    // Detect button press transition (HIGH -> LOW)
     if (resetState == LOW && lastResetState == HIGH) 
     {
         lastDebounceTime = currentTime;
         lastResetState = resetState;
-        Serial.println("Reset Pressed.....");
+        Serial.println("Reset pressed");
 
-        // start pulse
+        // start a short counter reset pulse
         digitalWrite(pins.counterReset, HIGH);
         pulseStartTime = currentTime;
         pulseActive = true;
@@ -1027,25 +928,25 @@ Button::ButtonEvent Button::handleInput()
     {
         lastDebounceTime = currentTime;
         lastPauseState = pauseState;
-        Serial.println("Pause Pressed.....");
+        Serial.println("Pause pressed");
         return ButtonEvent::PausedPressed;
     }
     if (playState == LOW && lastPlayState == HIGH) 
     {
         lastDebounceTime = currentTime;
         lastPlayState = playState;
-        Serial.println("Play Pressed.....");
+        Serial.println("Play pressed");
         return ButtonEvent::PlayPressed;
     }
     if (stepState == LOW && lastStepState == HIGH) 
     {
         lastDebounceTime = currentTime;
         lastStepState = stepState;
-        Serial.println("Step Pressed.....");
+        Serial.println("Step pressed");
         return ButtonEvent::StepPressed;
     }
 
-    // Save last states
+    // Save last states for the next call
     lastResetState = resetState;
     lastPauseState = pauseState;
     lastPlayState  = playState;
@@ -1058,12 +959,6 @@ bool Button::getButtonStatus()
 {
     return buttonPressed;
 }
-
-
-
-
-
-
 
 
 
